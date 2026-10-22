@@ -1,0 +1,82 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config p/javascript --config p/nodejs --config p/dockerfile --config p/kubernetes --error --quiet services k8s
+
+  dependencies:
+    name: Dependency audit (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [frontend, gateway, auth-service, project-service, runner-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: npm audit (production deps, fail on high+)
+        working-directory: services/${{ matrix.service }}
+        run: npm audit --omit=dev --audit-level=high
+
+  trivy-fs:
+    name: Trivy filesystem + IaC scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vulnerabilities and secrets (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Kubernetes / Dockerfile misconfiguration (report)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+  hadolint:
+    name: Dockerfile lint (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [frontend, gateway, auth-service, project-service, runner-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: services/${{ matrix.service }}/Dockerfile
+          failure-threshold: warning
