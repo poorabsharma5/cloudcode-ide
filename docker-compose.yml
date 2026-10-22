@@ -1,0 +1,50 @@
+# Local development stack:  docker compose up --build   ->  http://localhost:3000
+# NOTE: runner-service uses RUNNER_MODE=local here (code runs inside the container).
+# In Kubernetes the runner uses isolated, network-less Jobs instead.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cloudcode
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: cloudcode
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudcode"]
+      interval: 5s
+      retries: 10
+
+  auth-service:
+    build: ./services/auth-service
+    environment: &common
+      JWT_SECRET: dev-only-secret
+      DATABASE_URL: postgres://cloudcode:devpassword@postgres:5432/cloudcode
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  project-service:
+    build: ./services/project-service
+    environment: *common
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  runner-service:
+    build: ./services/runner-service
+    environment:
+      RUNNER_MODE: local
+
+  gateway:
+    build: ./services/gateway
+    environment:
+      JWT_SECRET: dev-only-secret
+    depends_on: [auth-service, project-service, runner-service]
+
+  frontend:
+    build: ./services/frontend
+    ports:
+      - "3000:8080"
+    depends_on: [gateway]
+
+volumes:
+  pgdata:
