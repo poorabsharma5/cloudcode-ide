@@ -1,6 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+
+const SECRET = crypto.randomBytes(16).toString('hex');
 const { createApp } = require('./app');
 
 function memoryStore() {
@@ -19,7 +22,7 @@ function memoryStore() {
 }
 
 async function withServer(fn) {
-  const app = createApp({ store: memoryStore(), jwtSecret: 'test-secret' });
+  const app = createApp({ store: memoryStore(), jwtSecret: SECRET });
   const server = app.listen(0);
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -37,7 +40,7 @@ test('register returns a signed token', async () => {
     const res = await post(`${base}/register`, { username: 'alice', password: 'secret1' });
     assert.strictEqual(res.status, 201);
     const { token } = await res.json();
-    assert.strictEqual(jwt.verify(token, 'test-secret').username, 'alice');
+    assert.strictEqual(jwt.verify(token, SECRET).username, 'alice');
   });
 });
 

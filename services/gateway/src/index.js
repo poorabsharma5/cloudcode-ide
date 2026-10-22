@@ -7,6 +7,7 @@ if (!process.env.JWT_SECRET) {
 
 const app = createApp({
   jwtSecret: process.env.JWT_SECRET,
+  trustProxyHops: Number(process.env.TRUST_PROXY_HOPS || 2),
   targets: {
     auth: process.env.AUTH_URL || 'http://auth-service:4001',
     projects: process.env.PROJECTS_URL || 'http://project-service:4002',
