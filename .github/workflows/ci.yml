@@ -44,7 +44,7 @@ jobs:
         service: [frontend, gateway, auth-service, project-service, runner-service]
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v6
         with:
           context: services/${{ matrix.service }}
