@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+# CD replaces every newTag with the git SHA being deployed.
+images:
+  - { name: cloudcode-frontend, newName: ghcr.io/poorabsharma5/cloudcode-frontend, newTag: latest }
+  - { name: cloudcode-gateway, newName: ghcr.io/poorabsharma5/cloudcode-gateway, newTag: latest }
+  - { name: cloudcode-auth-service, newName: ghcr.io/poorabsharma5/cloudcode-auth-service, newTag: latest }
+  - { name: cloudcode-project-service, newName: ghcr.io/poorabsharma5/cloudcode-project-service, newTag: latest }
+  - { name: cloudcode-runner-service, newName: ghcr.io/poorabsharma5/cloudcode-runner-service, newTag: latest }
