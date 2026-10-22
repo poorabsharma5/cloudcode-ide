@@ -1,0 +1,111 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  security:
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+
+  build-and-push:
+    name: Build, scan, push (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    needs: [ci, security]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [frontend, gateway, auth-service, project-service, runner-service]
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/cloudcode-${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image (local only)
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+      - name: Scan image with Trivy (fail on CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Push image
+        run: |
+          docker tag $IMAGE:${{ github.sha }} $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+
+  deploy:
+    name: Deploy to home server (k3s)
+    runs-on: [self-hosted, home-server]
+    needs: build-and-push
+    environment:
+      name: production
+      url: https://ide.poorabsharma.site
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure namespaces and secrets exist
+        run: |
+          kubectl apply -f k8s/base/namespaces.yaml
+          if ! kubectl -n cloudcode get secret cloudcode-secrets >/dev/null 2>&1; then
+            PG=$(openssl rand -hex 16); JWT=$(openssl rand -hex 32)
+            kubectl -n cloudcode create secret generic cloudcode-secrets \
+              --from-literal=POSTGRES_PASSWORD="$PG" \
+              --from-literal=JWT_SECRET="$JWT" \
+              --from-literal=DATABASE_URL="postgres://cloudcode:$PG@postgres:5432/cloudcode"
+          fi
+
+      - name: Pin images to this commit
+        working-directory: k8s/overlays/prod
+        run: |
+          sed -i -E "s/newTag: [^ ]+ \}/newTag: ${{ github.sha }} }/" kustomization.yaml
+          grep newTag kustomization.yaml
+
+      - name: Apply manifests
+        run: kubectl apply -k k8s/overlays/prod
+
+      - name: Wait for rollout
+        run: |
+          kubectl -n cloudcode rollout status statefulset/postgres --timeout=180s
+          for d in auth-service project-service runner-service gateway frontend; do
+            kubectl -n cloudcode rollout status deployment/$d --timeout=180s
+          done
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 10); do
+            curl -fsS http://localhost:30480/healthz && break || sleep 3
+          done
+          curl -fsS http://localhost:30480/api/auth/login -H 'content-type: application/json' -d '{"username":"smoke","password":"smoke-test"}' -o /dev/null -w "auth route -> %{http_code}\n" || true
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:30480/api/projects)" = "401"
