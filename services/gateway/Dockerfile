@@ -1,11 +1,11 @@
 # ---- build stage: install production dependencies only ----
-FROM node:20-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # ---- runtime stage: small, non-root ----
-FROM node:20-alpine
+FROM node:25-alpine
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
