@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudcode
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+---
+# Untrusted user code runs here. "restricted" Pod Security rejects any pod that
+# is privileged, runs as root, or lacks a seccomp profile.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudcode-sandbox
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
