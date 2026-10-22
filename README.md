@@ -5,6 +5,8 @@ instantly. Every run executes in an **isolated, network-less Kubernetes Job**.
 
 **Live:** https://ide.poorabsharma.site
 
+![CloudCode IDE running Python in a Kubernetes sandbox](docs/ide-screenshot.png)
+
 Built for *Cloud Native Applications & DevOps*.
 
 ## Architecture
