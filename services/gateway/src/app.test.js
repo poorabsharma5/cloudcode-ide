@@ -1,7 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('http');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+
+const SECRET = crypto.randomBytes(16).toString('hex');
+const OTHER_SECRET = crypto.randomBytes(16).toString('hex');
 const { createApp } = require('./app');
 
 // A fake upstream that echoes the path and the identity header it received.
@@ -17,14 +21,14 @@ function fakeUpstream() {
 test('gateway auth + routing', async () => {
   const up = await fakeUpstream();
   const url = `http://127.0.0.1:${up.address().port}`;
-  const gw = createApp({ jwtSecret: 's3cret', targets: { auth: url, projects: url, runner: url } }).listen(0);
+  const gw = createApp({ jwtSecret: SECRET, targets: { auth: url, projects: url, runner: url } }).listen(0);
   const base = `http://127.0.0.1:${gw.address().port}`;
   try {
     // protected route without token
     assert.strictEqual((await fetch(`${base}/api/projects`)).status, 401);
 
     // valid token: path rewritten, identity injected
-    const token = jwt.sign({ sub: '42' }, 's3cret');
+    const token = jwt.sign({ sub: '42' }, SECRET);
     const ok = await (await fetch(`${base}/api/projects/1/files`, { headers: { authorization: `Bearer ${token}` } })).json();
     assert.strictEqual(ok.path, '/projects/1/files');
     assert.strictEqual(ok.uid, '42');
@@ -34,7 +38,7 @@ test('gateway auth + routing', async () => {
     assert.strictEqual(spoof.uid, '42');
 
     // token signed with another key is rejected
-    const forged = jwt.sign({ sub: '1' }, 'other');
+    const forged = jwt.sign({ sub: '1' }, OTHER_SECRET);
     assert.strictEqual((await fetch(`${base}/api/run`, { method: 'POST', headers: { authorization: `Bearer ${forged}` } })).status, 401);
 
     // auth routes are public
