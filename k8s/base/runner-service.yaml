@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runner-service
+  namespace: cloudcode
+  labels: { app: runner-service, part-of: cloudcode }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: runner-service }
+  template:
+    metadata:
+      labels: { app: runner-service, part-of: cloudcode }
+    spec:
+      automountServiceAccountToken: true
+      serviceAccountName: runner
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: runner-service
+          image: cloudcode-runner-service
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4003
+          env:
+            - { name: RUNNER_MODE, value: k8s }
+            - { name: SANDBOX_NAMESPACE, value: cloudcode-sandbox }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4003 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 4003 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: runner-service
+  namespace: cloudcode
+spec:
+  selector: { app: runner-service }
+  ports:
+    - port: 4003
+      targetPort: 4003

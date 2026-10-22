@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-service
+  namespace: cloudcode
+  labels: { app: project-service, part-of: cloudcode }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: project-service }
+  template:
+    metadata:
+      labels: { app: project-service, part-of: cloudcode }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: project-service
+          image: cloudcode-project-service
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4002
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: cloudcode-secrets, key: DATABASE_URL } }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4002 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 4002 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-service
+  namespace: cloudcode
+spec:
+  selector: { app: project-service }
+  ports:
+    - port: 4002
+      targetPort: 4002
