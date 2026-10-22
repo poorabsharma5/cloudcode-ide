@@ -1,0 +1,65 @@
+# Default: nothing can talk to anything in the app namespace; then open exactly
+# the edges of the architecture: frontend -> gateway -> {auth, project, runner};
+# {auth, project} -> postgres. The frontend is reachable from outside (NodePort).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: cloudcode
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend
+  namespace: cloudcode
+spec:
+  podSelector:
+    matchLabels: { app: frontend }
+  ingress:
+    - {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-from-frontend
+  namespace: cloudcode
+spec:
+  podSelector:
+    matchLabels: { app: gateway }
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: frontend }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backends-from-gateway
+  namespace: cloudcode
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [auth-service, project-service, runner-service] }
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: gateway }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-services
+  namespace: cloudcode
+spec:
+  podSelector:
+    matchLabels: { app: postgres }
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app, operator: In, values: [auth-service, project-service] }
+      ports:
+        - port: 5432
