@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: cloudcode
+  labels: { app: auth-service, part-of: cloudcode }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: auth-service }
+  template:
+    metadata:
+      labels: { app: auth-service, part-of: cloudcode }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: auth-service
+          image: cloudcode-auth-service
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4001
+          env:
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: cloudcode-secrets, key: JWT_SECRET } }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: cloudcode-secrets, key: DATABASE_URL } }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4001 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 4001 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: cloudcode
+spec:
+  selector: { app: auth-service }
+  ports:
+    - port: 4001
+      targetPort: 4001
