@@ -1,0 +1,36 @@
+# runner-service may only manage Jobs/Pods inside the sandbox namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: runner
+  namespace: cloudcode
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-runner
+  namespace: cloudcode-sandbox
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sandbox-runner
+  namespace: cloudcode-sandbox
+subjects:
+  - kind: ServiceAccount
+    name: runner
+    namespace: cloudcode
+roleRef:
+  kind: Role
+  name: sandbox-runner
+  apiGroup: rbac.authorization.k8s.io
